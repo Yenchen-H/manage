@@ -331,11 +331,63 @@ function saveCfgAndSync(){
    ======================== */
 function shuffle(arr){const a=[...arr];for(let i=a.length-1;i>0;i--){const j=Math.floor(Math.random()*(i+1));[a[i],a[j]]=[a[j],a[i]];}return a;}
 
-function generateRoundRobin(attendees){
-  const sh=shuffle([...attendees]);
-  const teams=[];let i=0;
-  while(i+1<sh.length){teams.push({id:teams.length,players:[sh[i],sh[i+1]],color:tc(teams.length)});i+=2;}
-  if(sh.length%2===1) teams.push({id:teams.length,players:[sh[sh.length-1]],color:'#aaa',bye:true});
+function pairKey(a,b){return [a,b].sort().join('||');}
+
+function buildSameDayPairStats(date, excludeSessionId){
+  const sameDaySessions=sessions
+    .filter(s=>s.date===date && s.id!==excludeSessionId && s.teams && s.teams.length)
+    .sort((a,b)=>String(a.id).localeCompare(String(b.id)));
+  const pairCounts={};
+  sameDaySessions.forEach(s=>{
+    (s.teams||[]).forEach(t=>{
+      if(t.bye||!t.players||t.players.length<2)return;
+      const key=pairKey(t.players[0],t.players[1]);
+      pairCounts[key]=(pairCounts[key]||0)+1;
+    });
+  });
+  const prevSession=sameDaySessions.length?sameDaySessions[sameDaySessions.length-1]:null;
+  const prevPairs=new Set();
+  if(prevSession){
+    (prevSession.teams||[]).forEach(t=>{
+      if(t.bye||!t.players||t.players.length<2)return;
+      prevPairs.add(pairKey(t.players[0],t.players[1]));
+    });
+  }
+  return { pairCounts, prevPairs, sameDaySessions };
+}
+
+function buildTeamsAvoidingRepeats(attendees, date, excludeSessionId){
+  const { pairCounts, prevPairs } = buildSameDayPairStats(date, excludeSessionId);
+  const tries=Math.max(120, attendees.length*attendees.length*12);
+  let best=null;
+  for(let t=0;t<tries;t++){
+    const sh=shuffle([...attendees]);
+    const teams=[];
+    let penalty=0;
+    let i=0;
+    while(i+1<sh.length){
+      const a=sh[i], b=sh[i+1];
+      const key=pairKey(a,b);
+      const repeatCount=pairCounts[key]||0;
+      if(repeatCount>0) penalty += repeatCount*10;
+      if(prevPairs.has(key)) penalty += 100;
+      teams.push({id:teams.length,players:[a,b],color:tc(teams.length)});
+      i+=2;
+    }
+    if(sh.length%2===1){
+      penalty += 1;
+      teams.push({id:teams.length,players:[sh[sh.length-1]],color:'#aaa',bye:true});
+    }
+    if(!best || penalty<best.penalty || (penalty===best.penalty && Math.random()<0.5)){
+      best={teams, penalty};
+      if(penalty===0) break;
+    }
+  }
+  return best?best.teams:[];
+}
+
+function generateRoundRobin(attendees, date='', excludeSessionId=''){
+  const teams=buildTeamsAvoidingRepeats(attendees, date, excludeSessionId);
   const n=teams.length;
   let tList=teams.map(t=>t.id);
   if(n%2===1)tList.push(-1);
@@ -521,6 +573,7 @@ function renderSessionContent(id){
       <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px;margin-bottom:10px">
         <p class="lbl" style="margin-bottom:0">${tc2} 隊 · ${s.matches.length} 場循環賽</p>
         <button class="btn sm" onclick="reshuffleSession('${s.id}')">🔀 重新抽籤</button>
+        <span style="font-size:12px;color:#888">同一天會盡量避開和上一輪重複搭檔</span>
       </div><div class="teams-row">`;
     s.teams.forEach(t=>{
       if(t.bye)html+=`<div class="bye-chip">輪空：${t.players[0]}</div>`;
@@ -624,14 +677,14 @@ function confirmAttend(sid){
   const s=getSession(sid);if(!s)return;
   const att=[];document.querySelectorAll('.p-chip.on').forEach(c=>att.push(c.dataset.name));
   if(att.length<4){alert('需要至少 4 人才能進行雙打循環賽');return;}
-  s.attendees=att;const{teams,matches}=generateRoundRobin(att);s.teams=teams;s.matches=matches;
+  s.attendees=att;const{teams,matches}=generateRoundRobin(att,s.date,s.id);s.teams=teams;s.matches=matches;
   localSave();renderSessionList();renderSessionContent(sid);
 }
 
 function reshuffleSession(sid){
   const s=getSession(sid);if(!s||!s.attendees)return;
   if(!confirm('重新抽籤會清除已輸入的比分，確定嗎？'))return;
-  const{teams,matches}=generateRoundRobin(s.attendees);s.teams=teams;s.matches=matches;
+  const{teams,matches}=generateRoundRobin(s.attendees,s.date,s.id);s.teams=teams;s.matches=matches;
   localSave();renderSessionContent(sid);
 }
 
