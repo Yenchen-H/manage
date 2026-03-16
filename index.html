@@ -371,27 +371,30 @@ function calcStats(s){
 
 function sessionScores(s){
   if(!s||!s.attendees)return{};
-  const{wins,pf,pa}=calcStats(s);
-  // 隊數 = 非輪空隊伍數，積分規則：第1名=隊數分，往下遞減1
-  // 固定積分：第1名3分、第2名2分、第3名以後1分
-  const autoPts=(rank)=>rank===1?3:rank===2?2:1;
-  // 排序：先比勝場，同勝場比得分，再比失分少
-  const sorted=[...s.attendees].sort((a,b)=>{
-    if((wins[b]||0)!==(wins[a]||0))return(wins[b]||0)-(wins[a]||0);
-    if((pf[b]||0)!==(pf[a]||0))return(pf[b]||0)-(pf[a]||0);
-    return(pa[a]||0)-(pa[b]||0);
+  const{wins,pf,pa,teamWins,teamPF,teamPA}=calcStats(s);
+  // 積分規則：第1名隊3分、第2名隊2分、第3名以後1分
+  const autoPts=(teamRank)=>teamRank===1?3:teamRank===2?2:1;
+  // 以隊伍為單位排序（非輪空隊）
+  const activeTeams=(s.teams||[]).filter(t=>!t.bye);
+  activeTeams.sort((a,b)=>{
+    if((teamWins[b.id]||0)!==(teamWins[a.id]||0))return(teamWins[b.id]||0)-(teamWins[a.id]||0);
+    if((teamPF[b.id]||0)!==(teamPF[a.id]||0))return(teamPF[b.id]||0)-(teamPF[a.id]||0);
+    return(teamPA[a.id]||0)-(teamPA[b.id]||0);
   });
-  const score={};let i=0;
-  while(i<sorted.length){
+  // 依隊伍名次給分，同成績的隊並列（取平均）
+  const score={};
+  let i=0;
+  while(i<activeTeams.length){
     let j=i;
-    while(j<sorted.length&&
-      (wins[sorted[j]]||0)===(wins[sorted[i]]||0)&&
-      (pf[sorted[j]]||0)===(pf[sorted[i]]||0)&&
-      (pa[sorted[j]]||0)===(pa[sorted[i]]||0))j++;
-    // 並列時取該段積分平均
+    while(j<activeTeams.length&&
+      (teamWins[activeTeams[j].id]||0)===(teamWins[activeTeams[i].id]||0)&&
+      (teamPF[activeTeams[j].id]||0)===(teamPF[activeTeams[i].id]||0)&&
+      (teamPA[activeTeams[j].id]||0)===(teamPA[activeTeams[i].id]||0))j++;
     const rankPts=[];for(let r=i+1;r<=j;r++)rankPts.push(autoPts(r));
     const avg=Math.round(rankPts.reduce((s,v)=>s+v,0)/rankPts.length);
-    for(let k=i;k<j;k++)score[sorted[k]]=avg;
+    for(let k=i;k<j;k++){
+      activeTeams[k].players.forEach(p=>{if(s.attendees.includes(p))score[p]=avg;});
+    }
     i=j;
   }
   return score;
@@ -542,7 +545,15 @@ function renderSessionContent(id){
         <table class="h-table"><thead><tr><th>排名</th><th>選手</th><th>隊伍</th><th>勝場</th><th class="r">積分</th></tr></thead><tbody>`;
       let rank=1;
       sorted.forEach((p,i)=>{
-        if(i>0&&(sc[sorted[i]]||0)!==(sc[sorted[i-1]]||0))rank=i+1;
+        if(i>0&&(sc[sorted[i]]||0)!==(sc[sorted[i-1]]||0)){
+          // 名次跳到下一個不同分數的隊伍排名（以隊為單位）
+          const prevScore=sc[sorted[i-1]]||0;
+          const curScore=sc[sorted[i]]||0;
+          // 數前面有幾個不同分數的人（以隊計）
+          const prevTeam=s.teams.find(tt=>tt.players.includes(sorted[i-1])&&!tt.bye);
+          const curTeam=s.teams.find(tt=>tt.players.includes(sorted[i])&&!tt.bye);
+          if(prevTeam&&curTeam&&prevTeam.id!==curTeam.id) rank++;
+        }
         const t=s.teams.find(tt=>tt.players.includes(p)&&!tt.bye);
         html+=`<tr><td>${rank}</td><td>${p}</td>
           <td><span style="display:inline-flex;align-items:center;gap:4px;font-size:12px">
