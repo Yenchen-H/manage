@@ -185,7 +185,7 @@ input:focus{outline:2px solid #185FA5;border-color:#185FA5}
     <div class="card">
       <p class="lbl" style="margin-bottom:4px">雲端設定</p>
       <p style="font-size:12px;color:#aaa;margin-bottom:10px">Apps Script Web App URL</p>
-      <input type="text" id="cfgWebAppUrl" placeholder="https://script.google.com/macros/s/AKfycbypIfkSrcSnzZReBu3_65YefnUSYZVumE3xD-0vwiy76KjGjdPyz32R8NFfKheBJh7w/exec" style="width:100%;margin-bottom:8px">
+      <input type="text" id="cfgWebAppUrl" placeholder="貼上 Web App URL" style="width:100%;margin-bottom:8px">
       <button class="btn primary" onclick="saveCfgAndSync()">儲存並同步</button>
     </div>
     <div class="card">
@@ -220,7 +220,9 @@ const AV_FG=['#0C447C','#27500A','#633806','#72243E','#085041','#3C3489','#712B1
    ]}]
    ======================== */
 let players=[], sessions=[], winPts=2, activeSessionId=null;
-let WEB_APP_URL='';
+/* ★ 把你的 Web App URL 貼在這裡 ★ */
+const FIXED_WEB_APP_URL = 'https://script.google.com/macros/s/AKfycbypIfkSrcSnzZReBu3_65YefnUSYZVumE3xD-0vwiy76KjGjdPyz32R8NFfKheBJh7w/exec';
+let WEB_APP_URL=FIXED_WEB_APP_URL;
 
 function avBg(i){return AV_BG[i%AV_BG.length];}
 function avFg(i){return AV_FG[i%AV_FG.length];}
@@ -264,7 +266,7 @@ function load(){
     players=JSON.parse(localStorage.getItem('bm7_players')||'null')||DEFAULT_PLAYERS.slice();
     sessions=JSON.parse(localStorage.getItem('bm7_sessions')||'[]');
     winPts=parseInt(localStorage.getItem('bm7_winPts')||'2')||2;
-    WEB_APP_URL=localStorage.getItem('bm_webAppUrl')||'';
+    WEB_APP_URL=FIXED_WEB_APP_URL||localStorage.getItem('bm_webAppUrl')||'';
   }catch(e){players=DEFAULT_PLAYERS.slice();sessions=[];winPts=2;}
   const d=document.getElementById('newDate');
   if(d){const t=new Date();d.value=`${t.getFullYear()}-${String(t.getMonth()+1).padStart(2,'0')}-${String(t.getDate()).padStart(2,'0')}`;}
@@ -772,6 +774,7 @@ async function pushToCloud(){
 function saveCfgAndSync(){
   const u=(document.getElementById('cfgWebAppUrl')||{}).value.trim();
   if(u){WEB_APP_URL=u;localStorage.setItem('bm_webAppUrl',u);}
+  else WEB_APP_URL=FIXED_WEB_APP_URL||localStorage.getItem('bm_webAppUrl')||'';
   pushToCloud();
 }
 
